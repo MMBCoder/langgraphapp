@@ -1,0 +1,87 @@
+import os
+from typing import TypedDict, List
+from dotenv import load_dotenv
+
+# LangGraph for defining the state and graph
+from langgraph.graph import StateGraph, END
+from langchain.prompts import PromptTemplate
+from langchain_core.runnables.graph import MermaidDrawMethod
+
+# BlueConic GenAI Imports
+from blueconic import Client
+from blueconic.domain.genai import Message
+
+# For visualization in notebooks (optional)
+from IPython.display import display, Image
+
+# Load environment variables (if any needed for BlueConic auth)
+load_dotenv()
+
+# Initialize BlueConic GenAI client
+bc = Client()
+
+# Define the state structure for LangGraph
+class State(TypedDict):
+    text: str
+    classification: str
+    entities: List[str]
+    summary: str
+
+# Classification Node
+def classification_node(state: State):
+    ''' Classify the text into one of the categories: News, Blog, Research, or Other '''
+    prompt = PromptTemplate(
+        input_variables=["text"],
+        template="Classify the following text into one of the categories: News, Blog, Research, or Other.\n\nText:{text}\n\nCategory:"
+    )
+    full_prompt = prompt.format(text=state["text"])
+    messages = [Message(role=Message.Role.User, content=full_prompt)]
+    response = bc.get_chat_completion(messages)
+    classification = response.content.strip()
+    return {"classification": classification}
+
+# Entity Extraction Node
+def entity_extraction_node(state: State):
+    ''' Extract all the entities (Person, Organization, Location) from the text '''
+    prompt = PromptTemplate(
+        input_variables=["text"],
+        template="Extract all the entities (Person, Organization, Location) from the following text. Provide the result as a comma-separated list.\n\nText:{text}\n\nEntities:"
+    )
+    full_prompt = prompt.format(text=state["text"])
+    messages = [Message(role=Message.Role.User, content=full_prompt)]
+    response = bc.get_chat_completion(messages)
+    entities = response.content.strip().split(", ")
+    return {"entities": entities}
+
+# Summarization Node
+def summarization_node(state: State):
+    ''' Summarize the text in one short sentence '''
+    prompt = PromptTemplate(
+        input_variables=["text"],
+        template="Summarize the following text in one short sentence.\n\nText:{text}\n\nSummary:"
+    )
+    full_prompt = prompt.format(text=state["text"])
+    messages = [Message(role=Message.Role.User, content=full_prompt)]
+    response = bc.get_chat_completion(messages)
+    summary = response.content.strip()
+    return {"summary": summary}
+
+# Optional: define a LangGraph workflow or test each node standalone
+if __name__ == "__main__":
+    sample_text = "OpenAI has released a new model, GPT-4o, which is capable of reasoning across vision, audio, and text modalities in real time."
+    initial_state = {"text": sample_text, "classification": "", "entities": [], "summary": ""}
+
+    # Run each node
+    print("Classification:")
+    state_with_class = classification_node(initial_state)
+    print(state_with_class)
+
+    print("\nEntity Extraction:")
+    initial_state.update(state_with_class)
+    state_with_entities = entity_extraction_node(initial_state)
+    print(state_with_entities)
+
+    print("\nSummarization:")
+    initial_state.update(state_with_entities)
+    state_with_summary = summarization_node(initial_state)
+    print(state_with_summary)
